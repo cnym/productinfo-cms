@@ -15,7 +15,7 @@
                             :disabled="importExcelDisabled"
                             slot="trigger"
                             size="mini">
-                        导入excel
+                        导入excel{{importExcelDisabled?'中,请稍候...':''}}
                     </el-button>
                 </el-upload>
                 <el-button @click="exportExcel" size="mini">导出excel</el-button>
@@ -169,7 +169,7 @@
                             label="项目级别"
                             show-overflow-tooltip
                             :formatter="formatter"
-                            min-width="150">
+                            min-width="120">
                     </el-table-column>
                     <el-table-column
                             prop="pType"
@@ -183,21 +183,21 @@
                             label="研究开始日期"
                             show-overflow-tooltip
                             :formatter="formatter"
-                            min-width="150">
+                            min-width="110">
                     </el-table-column>
                     <el-table-column
                             prop="pEndDate"
                             label="研究结束日期"
                             show-overflow-tooltip
                             :formatter="formatter"
-                            min-width="150">
+                            min-width="110">
                     </el-table-column>
                     <el-table-column
                             prop="pCheckTime"
                             label="验收时间"
                             show-overflow-tooltip
                             :formatter="formatter"
-                            min-width="150">
+                            min-width="100">
                     </el-table-column>
                     <el-table-column label="操作" width="150" fixed="right">
                         <template slot-scope="scope">
@@ -256,8 +256,8 @@
         total: 0,
         // excel
         importExcelDisabled: false,
-        sheetFilterArr: ['pSeriesNum', 'pName', 'pCharge', 'pLevel', 'pType', 'pOrg', 'pYear', 'pStartDate', 'pEndDate', 'pMoney', 'pMembers', 'pOtherCompanyName', 'pCheckTime', 'pPrideContent', 'pDes', 'pMark'],
-        sheetHeaderArr: ['项目编号', '项目名称', '项目负责人', '项目级别', '项目类别', '承担单位', '立项年份', '研究起始日期', '研究结束日期', '经费（万元）', '参加人员', '合作单位名称', '验收时间', '获奖情况', '项目简介', '备注']
+        sheetFilterArr: ['pSeriesNum', 'pName', 'pCharge', 'pLevel', 'pType', 'pOrg', 'pYear', 'pStartDate', 'pEndDate', 'pMoney', 'pMembers', 'pOtherCompanyName', 'pCheckTime', 'pPrideContent', 'pDes', 'pMark', 'pTaskBook', 'pCheckData'],
+        sheetHeaderArr: ['项目编号', '项目名称', '项目负责人', '项目级别', '项目类别', '承担单位', '立项年份', '研究起始日期', '研究结束日期', '经费（万元）', '参加人员', '合作单位名称', '验收时间', '获奖情况', '项目简介', '备注', '任务书', '验收材料']
       }
     },
     mounted () {
@@ -387,6 +387,7 @@
       },
       // 导入excel
       importExcel (file) {
+        this.importExcelDisabled = true
         const fileReader = new FileReader()
         fileReader.onload = (ev) => {
           try {
@@ -396,11 +397,18 @@
             })
             let sheetArray = []
             for (let sheet in workbook.Sheets) {
-              sheetArray.push(XLSX.utils.sheet_to_json(workbook.Sheets[sheet]))
+              const sheetRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheet])
+              for (let row of sheetRows) {
+                let obj = {}
+                for (const item of this.sheetHeaderArr) { // 保证所有字段都存在
+                  obj[item] = ''
+                }
+                sheetArray.push(Object.assign(obj, row))
+              }
             }
-            console.log(sheetArray.flat(Infinity), this.formatJson(sheetArray.flat(Infinity)))
-            this.addMultiInfo(this.formatJson(sheetArray.flat(Infinity)))
+            this.addMultiInfo(this.formatJson(sheetArray))
           } catch (e) {
+            this.importExcelDisabled = false
             this.$message.warning('文件类型不正确, 只支持上传excel文件')
             return false
           }
@@ -430,14 +438,24 @@
           case 'pEndDate':
             newValue = new Date(value).getTime()
             break
+          case 'pCheckData':
+            newValue = []
+            break
+          case 'pTaskBook':
+            newValue = []
+            break
           default:
             newValue = value
             break
         }
         return newValue
       },
-      addMultiInfo (arr) {
-        this.importExcelDisabled = true
+      async addMultiInfo (arr) {
+        console.log('导入的数组', arr)
+        for (const item of arr) {
+          await this.findDataByNum(item)
+        }
+        console.log('新的导入后数组', arr)
         this.$db.insertMany(arr, (err, doc) => {
           this.importExcelDisabled = false
           if (err) {
@@ -446,7 +464,6 @@
               message: '导入excel失败，请稍后重试'
             })
           } else {
-            console.log(doc)
             this.$message({
               type: 'success',
               message: '导入excel成功'
@@ -455,8 +472,63 @@
           }
         })
       },
+      findDataByNum (data) {
+        return new Promise((resolve, reject) => {
+          const {
+            pSeriesNum
+          } = data
+          this.$db.find({pSeriesNum}, (e, res) => {
+            console.log('res', res)
+            if (res && res.length > 0) {
+              const {
+                pTaskBook,
+                pCheckData
+              } = res[0]
+              if (pTaskBook.length > 0) {
+                data.pTaskBook = pTaskBook
+              }
+              if (pCheckData.length > 0) {
+                data.pCheckData = pCheckData
+              }
+              let temp = {}
+              Object.assign(temp, res[0], {
+                pTaskBook: [],
+                pCheckData: []
+              })
+              console.log('delete item', temp)
+              this.$db.deleteOne(temp, (err, result) => {
+                if (err) {
+                  this.importExcelDisabled = false
+                  console.log('delete err', err)
+                } else {
+                  console.log('delete success')
+                }
+                resolve('')
+              })
+            } else {
+              resolve('')
+            }
+          })
+        })
+      },
+      objArrayDeepCopy (source) {
+        let sourceCopy
+        if (source instanceof Array) {
+          sourceCopy = []
+        } else if (source instanceof Object) {
+          sourceCopy = {}
+        } else {
+          sourceCopy = null
+        }
+        for (const key in source) {
+          if (Object.prototype.hasOwnProperty.call(source, key)) {
+            sourceCopy[key] = typeof source[key] === 'object' ? this.objArrayDeepCopy(source[key]) : source[key]
+          }
+        }
+        return sourceCopy
+      },
       // 表格
-      formatter (row, column, cellValue, index) {
+      formatter (row, column, cellValue) {
         if (cellValue === undefined || cellValue === null || cellValue === '') {
           return '--'
         } else {

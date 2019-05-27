@@ -110,7 +110,8 @@ function mongodbModel (dbname) {
       }
       const dbo = db.db(dbname)
       const collection = dbo.collection(dbname)
-      collection.insertMany(data, (err, result) => {
+      collection.insertMany(data, { ordered: false }, (err, result) => {
+        console.log(err)
         callback(err, result)
       })
     })
@@ -151,7 +152,7 @@ function mongodbModel (dbname) {
       }
       const dbo = db.db(dbname)
       const collection = dbo.collection(dbname)
-      collection.deleteOne(data, function (err, result) {
+      collection.deleteOne({pSeriesNum: data.pSeriesNum}, function (err, result) {
         callback(err, result)
       })
     })
