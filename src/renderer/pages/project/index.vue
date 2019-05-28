@@ -1,5 +1,5 @@
 <template>
-    <div class="page">
+    <div class="page" v-loading.body="pageLoading" :element-loading-text="loadingText" element-loading-spinner="el-icon-loading" element-loading-background="rgba(0, 0, 0, 0.2)">
         <div class="page-nav-wrapper">
             <el-breadcrumb separator="/">
                 <el-breadcrumb-item>科研项目信息检索</el-breadcrumb-item>
@@ -12,10 +12,9 @@
                         :on-change="importExcel"
                         :auto-upload="false">
                     <el-button
-                            :disabled="importExcelDisabled"
                             slot="trigger"
                             size="mini">
-                        导入excel{{importExcelDisabled?'中,请稍候...':''}}
+                        导入excel
                     </el-button>
                 </el-upload>
                 <el-button @click="exportExcel" size="mini">导出excel</el-button>
@@ -230,6 +229,9 @@
   export default {
     data () {
       return {
+        // 页面加载
+        pageLoading: false,
+        loadingText: '',
         // 查询
         formObj: {
           pSeriesNum: '',
@@ -255,7 +257,6 @@
         pageSize: 20,
         total: 0,
         // excel
-        importExcelDisabled: false,
         sheetFilterArr: ['pSeriesNum', 'pName', 'pCharge', 'pLevel', 'pType', 'pOrg', 'pYear', 'pStartDate', 'pEndDate', 'pMoney', 'pMembers', 'pOtherCompanyName', 'pCheckTime', 'pPrideContent', 'pDes', 'pMark', 'pTaskBook', 'pCheckData'],
         sheetHeaderArr: ['项目编号', '项目名称', '项目负责人', '项目级别', '项目类别', '承担单位', '立项年份', '研究起始日期', '研究结束日期', '经费（万元）', '参加人员', '合作单位名称', '验收时间', '获奖情况', '项目简介', '备注', '任务书', '验收材料']
       }
@@ -351,9 +352,12 @@
           cancelButtonText: '取消',
           type: 'warning'
         }).then(() => {
+          this.pageLoading = true
+          this.loadingText = '导出excel中，请稍候...'
           this.$db.find(this.lastParams, (err, r) => {
             if (err) {
               alert('查询数据异常，请稍后再试')
+              this.pageLoading = false
               return false
             }
             let option = {}
@@ -377,6 +381,7 @@
             console.log(option)
             const ExportJsonExcel = require('js-export-excel')
             new ExportJsonExcel(option).saveExcel()
+            this.pageLoading = false
           })
         }).catch(() => {
           this.$message({
@@ -387,7 +392,8 @@
       },
       // 导入excel
       importExcel (file) {
-        this.importExcelDisabled = true
+        this.pageLoading = true
+        this.loadingText = '导入excel中，请稍候...'
         const fileReader = new FileReader()
         fileReader.onload = (ev) => {
           try {
@@ -408,7 +414,7 @@
             }
             this.addMultiInfo(this.formatJson(sheetArray))
           } catch (e) {
-            this.importExcelDisabled = false
+            this.pageLoading = false
             this.$message.warning('文件类型不正确, 只支持上传excel文件')
             return false
           }
@@ -457,7 +463,7 @@
         }
         console.log('新的导入后数组', arr)
         this.$db.insertMany(arr, (err, doc) => {
-          this.importExcelDisabled = false
+          this.pageLoading = false
           if (err) {
             this.$message({
               type: 'error',
@@ -478,7 +484,7 @@
             pSeriesNum
           } = data
           this.$db.find({pSeriesNum}, (e, res) => {
-            console.log('res', res)
+            console.log('find res', res)
             if (res && res.length > 0) {
               const {
                 pTaskBook,
@@ -498,34 +504,18 @@
               console.log('delete item', temp)
               this.$db.deleteOne(temp, (err, result) => {
                 if (err) {
-                  this.importExcelDisabled = false
-                  console.log('delete err', err)
+                  this.pageLoading = false
+                  console.log('deleteOne err', err)
                 } else {
-                  console.log('delete success')
+                  console.log('deleteOne success')
                 }
-                resolve('')
+                resolve()
               })
             } else {
-              resolve('')
+              resolve()
             }
           })
         })
-      },
-      objArrayDeepCopy (source) {
-        let sourceCopy
-        if (source instanceof Array) {
-          sourceCopy = []
-        } else if (source instanceof Object) {
-          sourceCopy = {}
-        } else {
-          sourceCopy = null
-        }
-        for (const key in source) {
-          if (Object.prototype.hasOwnProperty.call(source, key)) {
-            sourceCopy[key] = typeof source[key] === 'object' ? this.objArrayDeepCopy(source[key]) : source[key]
-          }
-        }
-        return sourceCopy
       },
       // 表格
       formatter (row, column, cellValue) {
