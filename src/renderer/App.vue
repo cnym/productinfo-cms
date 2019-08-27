@@ -17,7 +17,7 @@
   import HeaderNav from './components/headerNav'
   import SideBar from './components/sideBar'
   export default {
-    name: 'cms',
+    name: 'cms1',
     components: {
       HeaderNav,
       SideBar
